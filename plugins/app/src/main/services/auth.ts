@@ -1,5 +1,6 @@
 import { shell } from "electron"
 import { nanoid } from "nanoid"
+import { shellEnv } from "shell-env"
 
 import { Service } from "@zenbujs/core/runtime"
 import { DbService } from "@zenbujs/core/services"
@@ -291,6 +292,23 @@ type FlowController = {
   pending: Deferred<string> | null
 }
 
+let shellEnvHydrated = false
+
+async function hydrateShellEnv(): Promise<void> {
+  if (shellEnvHydrated || process.platform !== "darwin") return
+  shellEnvHydrated = true
+  try {
+    const env = await shellEnv()
+    process.env = {
+      ...env,
+      ...process.env,
+      PATH: env.PATH ?? process.env.PATH,
+    }
+  } catch (err) {
+    console.warn("[auth] shell env hydration failed:", err)
+  }
+}
+
 export class AuthService extends Service.create({
   key: "auth",
   deps: { db: DbService },
@@ -309,6 +327,8 @@ export class AuthService extends Service.create({
   private flow: FlowController | null = null
 
   async evaluate() {
+    await hydrateShellEnv()
+
     // Surface any deferred errors pi's auth layer accumulated
     // during boot (e.g. malformed `auth.json`). They go to the
     // main-process console; the renderer surfaces "not configured"
