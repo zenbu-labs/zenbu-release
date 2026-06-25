@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -22,10 +22,15 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent"
  * active session is scoped to.
  */
 
-const ROOT_MARKERS = ["zenbu.config.ts", "AGENTS.md"] as const
-
 function hasZenbuMarkers(dir: string): boolean {
-  return ROOT_MARKERS.every(marker => existsSync(join(dir, marker)))
+  const pkgPath = join(dir, "package.json")
+  if (!existsSync(pkgPath)) return false
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>
+    return pkg.name === "zenbu"
+  } catch {
+    return false
+  }
 }
 
 function walkUpForRoot(start: string): string | null {
@@ -43,13 +48,17 @@ function walkUpForRoot(start: string): string | null {
  * Resolve the absolute path of the Zenbu source checkout.
  *
  * Order of precedence:
- *   1. `ZENBU_SOURCE_DIR` env var (explicit override).
+ *   1. `ZENBU_SOURCE_DIR` env var (explicit override; also used by
+ *      `PlaygroundService` for the same purpose).
  *   2. Walk up from this compiled module's directory.
  *   3. Walk up from the session cwd as a last resort.
  */
 function resolveZenbuRoot(cwd: string): string | null {
   const fromEnv = process.env.ZENBU_SOURCE_DIR?.trim()
-  if (fromEnv && hasZenbuMarkers(fromEnv)) return resolve(fromEnv)
+  if (fromEnv) {
+    const found = walkUpForRoot(resolve(fromEnv))
+    if (found) return found
+  }
 
   try {
     const here = dirname(fileURLToPath(import.meta.url))
